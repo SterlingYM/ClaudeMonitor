@@ -1,6 +1,8 @@
-# ClaudeMonitor
+# <img src="icon.png" width="32" height="32" alt="ClaudeMonitor icon" style="vertical-align: middle;"> ClaudeMonitor
 
 A local dashboard that monitors all active Claude Code agents on your machine.
+
+<img src="demo_screenshot.png" width="700" alt="ClaudeMonitor dashboard screenshot">
 
 ### Why I made this tool
 
