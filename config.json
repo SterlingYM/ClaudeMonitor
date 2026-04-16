@@ -1,0 +1,5 @@
+{
+  "port": 7891,
+  "dead_after_minutes": 30,
+  "perm_timeout_seconds": null
+}

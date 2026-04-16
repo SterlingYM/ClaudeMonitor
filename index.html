@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClaudeMonitor</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2317171c'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23a78bfa' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='%234ade80'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg:       #0e0e11;
+  --surface:  #17171c;
+  --surface2: #1f1f26;
+  --border:   #2e2e3a;
+  --border2:  #3d3d4d;
+  --text:     #e2e2ea;
+  --muted:    #6b6b80;
+  --dimmer:   #3d3d4d;
+  --accent:   #a78bfa;
+  --green:    #4ade80;
+  --lime:     #a3e635;
+  --yellow:   #fbbf24;
+  --orange:   #fb923c;
+  --blue:     #60a5fa;
+  --red:      #f87171;
+  --mono: 'JetBrains Mono','Fira Mono','Cascadia Code','Menlo','Monaco',ui-monospace,monospace;
+  --sans: ui-sans-serif,system-ui,-apple-system,sans-serif;
+}
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+html,body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+}
+
+.hidden { display: none !important; }
+
+/* ── Header ──────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  z-index: 10;
+}
+.header-logo { color: var(--accent); font-weight: 700; font-size: 15px; letter-spacing: .03em; }
+.spacer { flex: 1; }
+.conn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.conn-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--dimmer);
+  transition: background .3s;
+}
+.conn-dot.ok  { background: var(--green); }
+.conn-dot.err { background: var(--red); }
+
+/* ── Project tabs ────────────────────────────────────────────────── */
+.project-tabs {
+  display: flex;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.project-tabs::-webkit-scrollbar { height: 3px; }
+.project-tabs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.ptab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 9px 16px;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: color .12s, border-color .12s, background .12s;
+  flex-shrink: 0;
+}
+.ptab:hover          { color: var(--text); background: rgba(255,255,255,.03); }
+.ptab.active         { color: var(--text); border-bottom-color: var(--accent); }
+.ptab.p-alarm        { color: var(--orange); }
+.ptab.active.p-alarm { border-bottom-color: var(--orange); }
+@keyframes ptab-pulse {
+  0%,100% { background: transparent; }
+  50%      { background: rgba(251,146,60,.06); }
+}
+.ptab.p-alarm { animation: ptab-pulse 1.6s ease-in-out infinite; }
+
+.ptab { user-select: none; }
+.ptab.is-dragging            { opacity: .35; }
+.ptab.drag-left              { box-shadow: -2px 0 0 var(--accent); }
+.ptab.drag-right             { box-shadow:  2px 0 0 var(--accent); }
+.ptab-name { font-size: 13px; font-weight: 600; letter-spacing: .01em; }
+.ptab-info { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+.ptab-count { color: var(--muted); }
+.ptab-sep   { color: var(--border); }
+.ptab-time  { color: var(--muted); }
+.ptab-status { font-weight: 500; }
+
+.ps-running  { color: var(--blue); }
+.ps-waiting  { color: var(--orange); }
+.ps-idle     { color: var(--green); }
+.ps-starting { color: var(--muted); }
+.ps-ended    { color: var(--dimmer); }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+/* ── Main ────────────────────────────────────────────────────────── */
+.main {
+  padding: 22px 20px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  flex: 1;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────── */
+.empty {
+  text-align: center;
+  padding: 100px 20px;
+  color: var(--muted);
+}
+.empty-icon { font-size: 36px; opacity: .4; margin-bottom: 12px; }
+.empty p    { font-size: 13px; margin-top: 6px; color: var(--dimmer); }
+
+/* ── Session tabs (inner) ────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  gap: 3px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  font: 12px var(--mono);
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  border: 1px solid transparent;
+  border-bottom: none;
+  position: relative;
+  bottom: -1px;
+  transition: background .1s, color .1s;
+  white-space: nowrap;
+}
+.tab:hover              { background: var(--surface2); color: var(--text); }
+.tab.active             { background: var(--surface);  border-color: var(--border); color: var(--text); }
+.tab.t-waiting          { color: var(--orange); }
+.tab.active.t-waiting   { border-color: rgba(251,146,60,.5); }
+.sub-tag {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(96,165,250,.12);
+  color: var(--blue);
+}
+
+/* ── Session panel ───────────────────────────────────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.panel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.meta { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.ml   { color: var(--muted); }
+.mv   { font-family: var(--mono); }
+
+/* Status badge */
+.sbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.sdot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.s-starting           { background: var(--surface2); color: var(--muted); }
+.s-starting .sdot     { background: var(--muted); }
+.s-running            { background: rgba(74,222,128,.1);  color: var(--green);  }
+.s-running .sdot      { background: var(--green); animation: pulse 1.8s ease-in-out infinite; }
+.s-idle               { background: rgba(74,222,128,.1); color: var(--green); }
+.s-idle .sdot         { background: var(--green); }
+.s-waiting_permission { background: rgba(251,146,60,.12); color: var(--orange); }
+.s-waiting_permission .sdot { background: var(--orange); animation: pulse .85s ease-in-out infinite; }
+.s-completed          { background: var(--surface2); color: var(--muted); }
+.s-completed .sdot    { background: var(--muted); }
+.s-dead               { background: rgba(248,113,113,.08); color: var(--red); }
+.s-dead .sdot         { background: var(--red); }
+
+/* ── Permission box ──────────────────────────────────────────────── */
+.perm-box {
+  margin: 14px 18px;
+  border: 1px solid rgba(251,146,60,.35);
+  border-radius: 6px;
+  background: rgba(251,146,60,.05);
+  overflow: hidden;
+}
+.perm-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  background: rgba(251,146,60,.08);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--orange);
+  border-bottom: 1px solid rgba(251,146,60,.2);
+}
+.perm-body   { padding: 14px; }
+.perm-tool   { font: 13px var(--mono); color: var(--text); margin-bottom: 10px; }
+.perm-tool b { color: var(--orange); }
+.perm-code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  font: 12px var(--mono);
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+.perm-actions { display: flex; gap: 9px; }
+.btn-approve, .btn-deny {
+  padding: 7px 20px;
+  border-radius: 5px;
+  border: none;
+  font: 600 13px var(--sans);
+  cursor: pointer;
+  transition: opacity .1s, background .1s;
+}
+.btn-approve { background: var(--green); color: #052e16; }
+.btn-deny    { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-approve:hover:not(:disabled) { opacity: .85; }
+.btn-deny:hover:not(:disabled)    { background: var(--border); }
+.btn-approve:disabled, .btn-deny:disabled { opacity: .35; cursor: not-allowed; }
+.perm-result {
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  min-height: 20px;
+}
+.perm-result.sending  { color: var(--muted); }
+.perm-result.approved { color: var(--green); }
+.perm-result.denied   { color: var(--red); }
+.perm-result.timeout  { color: var(--yellow); }
+.perm-result.error    { color: var(--red); }
+
+/* ── Event log ───────────────────────────────────────────────────── */
+.log-head {
+  padding: 9px 18px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+.log {
+  font: 12px/1.7 var(--mono);
+  max-height: 260px;
+  overflow-y: auto;
+  padding-bottom: 6px;
+}
+.log-row {
+  display: flex;
+  gap: 10px;
+  padding: 1px 18px;
+}
+.log-row:hover { background: var(--surface2); }
+.lt  { color: var(--muted); flex-shrink: 0; }
+.lev { flex-shrink: 0; min-width: 150px; }
+.lx  { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ev-SessionStart      { color: var(--green);  }
+.ev-Stop              { color: var(--dimmer); }
+.ev-SubagentStart     { color: var(--blue);   }
+.ev-SubagentStop      { color: #3b82f6;       }
+.ev-Notification      { color: var(--accent); }
+.ev-PermissionRequest { color: var(--orange); }
+.ev-PermissionDenied  { color: var(--red);    }
+.ev-PreToolUse        { color: var(--muted);  }
+.ev-PostToolUse       { color: var(--muted);  }
+.ev-unknown           { color: var(--muted);  }
+
+/* ── Keyboard hint bar ───────────────────────────────────────────── */
+.kbd-bar {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 0 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.kbd-hint { display: flex; align-items: center; gap: 5px; }
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font: 11px var(--mono);
+  color: var(--text);
+}
+
+/* ── Scrollbars ──────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border2); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="header-logo">ClaudeMonitor</span>
+  <div class="spacer"></div>
+  <div class="conn">
+    <div class="conn-dot" id="cdot"></div>
+    <span id="cstatus">connecting</span>
+  </div>
+</div>
+
+<div class="project-tabs hidden" id="project-tabs"></div>
+
+<div class="main">
+  <div class="empty" id="empty">
+    <div class="empty-icon">◌</div>
+    <div style="color:var(--muted)">No active Claude sessions</div>
+    <p>Start a Claude Code session and it will appear here.</p>
+  </div>
+
+  <div id="project-view" class="hidden">
+    <div class="tabs" id="tabs"></div>
+    <div id="panel"></div>
+    <div class="kbd-bar">
+      <span class="kbd-hint"><kbd>a</kbd> approve</span>
+      <span class="kbd-hint"><kbd>d</kbd> deny</span>
+      <span class="kbd-hint"><kbd>←</kbd><kbd>→</kbd> switch session</span>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── State ─────────────────────────────────────────────────────────────────
+
+let sessions    = [];
+let allIncoming = [];
+let completedAt = {};
+let selectedCwd = null;
+let selectedSid = null;
+let tabOrder    = [];   // user-controlled project tab order
+let _dragSrc    = null;
+
+const HIDE_AFTER = 5 * 60 * 1000;
+const STATUS_ICONS = {
+  starting: '⟳', running: '●', idle: '●',
+  waiting_permission: '⚠', completed: '✓', dead: '✗',
+};
+const STATUS_LABELS = {
+  starting: 'starting', running: 'running', idle: 'idle',
+  waiting_permission: 'waiting permission',
+  completed: 'session ended', dead: 'dead',
+};
+function statusLabel(st) { return STATUS_LABELS[st] || st.replace(/_/g, ' '); }
+
+// ── SSE ───────────────────────────────────────────────────────────────────
+
+let sse = null;
+let backoff = 1000;
+
+function connect() {
+  sse = new EventSource('/stream');
+  sse.addEventListener('update', e => {
+    backoff = 1000;
+    setConn(true);
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'state') applyState(msg.sessions);
+  });
+  sse.onerror = () => {
+    setConn(false);
+    sse.close();
+    setTimeout(connect, backoff);
+    backoff = Math.min(backoff * 2, 30000);
+  };
+}
+
+function setConn(ok) {
+  document.getElementById('cdot').className      = 'conn-dot ' + (ok ? 'ok' : 'err');
+  document.getElementById('cstatus').textContent = ok ? 'live' : 'reconnecting…';
+}
+
+// ── State ─────────────────────────────────────────────────────────────────
+
+function applyState(incoming) {
+  allIncoming = incoming;
+  const now = Date.now();
+
+  for (const s of incoming) {
+    const done = s.status === 'completed' || s.status === 'dead';
+    if (done && !completedAt[s.id]) completedAt[s.id] = now;
+    if (!done) delete completedAt[s.id];
+  }
+
+  sessions = incoming.filter(s => {
+    const t = completedAt[s.id];
+    return !t || now - t < HIDE_AFTER;
+  });
+
+  notifyPermissions(incoming);
+  render();
+  syncTitle();
+}
+
+setInterval(() => applyState(allIncoming.length ? allIncoming : sessions), 30000);
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function cwdSessions(cwd)  { return sessions.filter(s => (s.cwd || '?') === cwd); }
+function shortId(id)       { return (id || '?').slice(0, 8); }
+function icon(st)          { return STATUS_ICONS[st] || '?'; }
+
+function splitCwd(cwd) {
+  const parts = (cwd || '?').replace(/\/$/, '').split('/');
+  const base  = parts.pop() || cwd;
+  return { base, dir: parts.join('/') || '/' };
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleTimeString([], { hour12: false }); }
+  catch { return ''; }
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function groupByCwd() {
+  const map = new Map();
+  for (const s of sessions) {
+    const cwd = s.cwd || '?';
+    if (!map.has(cwd)) map.set(cwd, []);
+    map.get(cwd).push(s);
+  }
+  return map;
+}
+
+// Sorted cwds: alarm first, then most recently active
+function sortedCwds(map) {
+  return [...map.keys()].sort((a, b) => {
+    const aw = map.get(a).some(s => s.status === 'waiting_permission');
+    const bw = map.get(b).some(s => s.status === 'waiting_permission');
+    if (aw !== bw) return aw ? -1 : 1;
+    const aT = Math.max(...map.get(a).map(s => +new Date(s.last_event_time || 0)));
+    const bT = Math.max(...map.get(b).map(s => +new Date(s.last_event_time || 0)));
+    return bT - aT;
+  });
+}
+
+function timeAgo(iso) {
+  if (!iso) return '—';
+  const sec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (sec <  5)  return 'just now';
+  if (sec < 60)  return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60)  return `${min}m ago`;
+  return `${Math.floor(min / 60)}h ago`;
+}
+
+// Aggregate status for a group of top-level sessions (priority order)
+function projectStatus(topLevel) {
+  if (topLevel.some(s => s.status === 'waiting_permission')) return 'waiting';
+  if (topLevel.some(s => s.status === 'running'))             return 'running';
+  if (topLevel.some(s => s.status === 'starting'))            return 'starting';
+  if (topLevel.some(s => s.status === 'idle'))                return 'idle';
+  return 'ended';
+}
+
+// Merge live cwds into tabOrder: preserve existing positions, append new ones at end
+function updateTabOrder(liveCwds) {
+  const set = new Set(liveCwds);
+  tabOrder = tabOrder.filter(c => set.has(c));
+  for (const c of liveCwds) {
+    if (!tabOrder.includes(c)) tabOrder.push(c);
+  }
+}
+
+// Returns map of cwd → display label; duplicates get " 2", " 3", etc.
+function makeTabLabels(cwds) {
+  const baseCounts = {};
+  for (const cwd of cwds) {
+    const { base } = splitCwd(cwd);
+    baseCounts[base] = (baseCounts[base] || 0) + 1;
+  }
+  const baseSeq = {};
+  const labels  = new Map();
+  // Stable ordering: sort so same base gets consistent numbering
+  for (const cwd of [...cwds].sort()) {
+    const { base } = splitCwd(cwd);
+    if (baseCounts[base] > 1) {
+      baseSeq[base] = (baseSeq[base] || 0) + 1;
+      labels.set(cwd, `${base} ${baseSeq[base]}`);
+    } else {
+      labels.set(cwd, base);
+    }
+  }
+  return labels;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+
+function render() {
+  const map  = groupByCwd();
+  const cwds = sortedCwds(map);
+
+  const emptyEl   = document.getElementById('empty');
+  const ptabsEl   = document.getElementById('project-tabs');
+  const viewEl    = document.getElementById('project-view');
+
+  if (cwds.length === 0) {
+    emptyEl.classList.remove('hidden');
+    ptabsEl.classList.add('hidden');
+    viewEl.classList.add('hidden');
+    return;
+  }
+
+  emptyEl.classList.add('hidden');
+  ptabsEl.classList.remove('hidden');
+  viewEl.classList.remove('hidden');
+
+  // Merge new cwds into tabOrder (new ones appended at end)
+  updateTabOrder(sortedCwds(map));
+
+  // Auto-select project: keep current if still present, else pick best
+  if (!selectedCwd || !map.has(selectedCwd)) {
+    const alarm = tabOrder.find(c => map.get(c).some(s => s.status === 'waiting_permission'));
+    selectedCwd = alarm || tabOrder[0];
+    selectedSid = null;
+  }
+
+  renderProjectTabs(tabOrder, map);
+  renderSessionView(map);
+}
+
+// ── Project tabs ──────────────────────────────────────────────────────────
+
+function renderProjectTabs(cwds, map) {
+  const labels  = makeTabLabels(cwds);
+  const ptabsEl = document.getElementById('project-tabs');
+
+  ptabsEl.innerHTML = cwds.map(cwd => {
+    const group    = map.get(cwd);
+    const topLevel = group.filter(s => !s.is_subagent);
+    const status   = projectStatus(group);
+    const isAlarm  = status === 'waiting';
+    const active   = cwd === selectedCwd;
+
+    const n          = topLevel.length;
+    const countStr   = n === 1 ? '1 agent' : `${n} agents`;
+    const lastMs     = Math.max(...group.map(s => +new Date(s.last_event_time || 0)));
+    const timeStr    = lastMs > 0 ? timeAgo(new Date(lastMs).toISOString()) : '—';
+    const statusText = status === 'waiting' ? 'waiting' : status;
+
+    return `<div class="ptab${active ? ' active' : ''}${isAlarm ? ' p-alarm' : ''}"
+               draggable="true" data-cwd="${esc(cwd)}">
+      <span class="ptab-name">${esc(labels.get(cwd))}</span>
+      <span class="ptab-info">
+        <span class="ptab-count">${countStr}</span>
+        <span class="ptab-sep">·</span>
+        <span class="ptab-time">${timeStr}</span>
+        <span class="ptab-sep">·</span>
+        <span class="ptab-status ps-${status}">● ${statusText}</span>
+      </span>
+    </div>`;
+  }).join('');
+
+  ptabsEl.querySelectorAll('.ptab').forEach(el => {
+    const cwd = el.dataset.cwd;
+
+    el.addEventListener('click', () => selectProject(cwd));
+
+    el.addEventListener('dragstart', e => {
+      _dragSrc = cwd;
+      e.dataTransfer.effectAllowed = 'move';
+      requestAnimationFrame(() => el.classList.add('is-dragging'));
+    });
+
+    el.addEventListener('dragend', () => {
+      _dragSrc = null;
+      el.classList.remove('is-dragging');
+      ptabsEl.querySelectorAll('.ptab').forEach(t =>
+        t.classList.remove('drag-left', 'drag-right')
+      );
+    });
+
+    el.addEventListener('dragover', e => {
+      if (!_dragSrc || _dragSrc === cwd) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const mid = el.getBoundingClientRect().left + el.getBoundingClientRect().width / 2;
+      ptabsEl.querySelectorAll('.ptab').forEach(t =>
+        t.classList.remove('drag-left', 'drag-right')
+      );
+      el.classList.add(e.clientX < mid ? 'drag-left' : 'drag-right');
+    });
+
+    el.addEventListener('dragleave', () =>
+      el.classList.remove('drag-left', 'drag-right')
+    );
+
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!_dragSrc || _dragSrc === cwd) return;
+      const mid         = el.getBoundingClientRect().left + el.getBoundingClientRect().width / 2;
+      const insertBefore = e.clientX < mid;
+      const from = tabOrder.indexOf(_dragSrc);
+      tabOrder.splice(from, 1);
+      const to = tabOrder.indexOf(cwd);
+      tabOrder.splice(insertBefore ? to : to + 1, 0, _dragSrc);
+      _dragSrc = null;
+      renderProjectTabs(tabOrder, map);
+    });
+  });
+}
+
+function selectProject(cwd) {
+  selectedCwd = cwd;
+  selectedSid = null;   // reset inner tab; renderSessionView will pick best
+  render();
+}
+
+// ── Session view (inner tabs + panel) ────────────────────────────────────
+
+function sortedTabSessions(cwd) {
+  return [...cwdSessions(cwd)].sort((a, b) => {
+    if (a.is_subagent !== b.is_subagent) return a.is_subagent ? 1 : -1;
+    const aw = a.status === 'waiting_permission', bw = b.status === 'waiting_permission';
+    if (aw !== bw) return aw ? -1 : 1;
+    return 0;
+  });
+}
+
+function renderSessionView(map) {
+  const group = cwdSessions(selectedCwd);
+
+  // Pick session tab: keep current if valid, else pick best
+  if (!selectedSid || !group.find(s => s.id === selectedSid)) {
+    const waiting = group.find(s => s.status === 'waiting_permission');
+    selectedSid = (waiting || group[0] || {}).id || null;
+  }
+
+  const sorted = sortedTabSessions(selectedCwd);
+
+  // Session tabs
+  document.getElementById('tabs').innerHTML = sorted.map(s => {
+    const active  = s.id === selectedSid;
+    const waiting = s.status === 'waiting_permission';
+    const cls = ['tab', active ? 'active' : '', waiting ? 't-waiting' : ''].filter(Boolean).join(' ');
+    return `<div class="${cls}" data-sid="${esc(s.id)}">
+      ${icon(s.status)} ${esc(shortId(s.id))}${s.is_subagent ? ' <span class="sub-tag">sub</span>' : ''}
+    </div>`;
+  }).join('');
+
+  document.getElementById('tabs').querySelectorAll('.tab').forEach(el =>
+    el.addEventListener('click', () => { selectedSid = el.dataset.sid; renderSessionView(map); })
+  );
+
+  // Panel
+  const sess    = group.find(s => s.id === selectedSid);
+  const panelEl = document.getElementById('panel');
+  if (!sess) { panelEl.innerHTML = ''; return; }
+
+  panelEl.innerHTML = buildPanel(sess);
+
+  const ba = panelEl.querySelector('.btn-approve');
+  const bd = panelEl.querySelector('.btn-deny');
+  if (ba) ba.addEventListener('click', () => relay(sess.id, 'approve', ba, bd));
+  if (bd) bd.addEventListener('click', () => relay(sess.id, 'deny',    ba, bd));
+
+  const log = panelEl.querySelector('.log');
+  if (log) log.scrollTop = log.scrollHeight;
+}
+
+function buildPanel(s) {
+  const canAct = s.status === 'waiting_permission';
+
+  const meta = [
+    `<div class="meta"><span class="ml">status</span>
+       <span class="sbadge s-${esc(s.status)}"><span class="sdot"></span>${esc(statusLabel(s.status))}</span>
+     </div>`,
+    s.last_tool
+      ? `<div class="meta"><span class="ml">last tool</span><span class="mv">${esc(s.last_tool)}</span></div>` : '',
+    `<div class="meta"><span class="ml">session</span><span class="mv" style="color:var(--muted)">${esc(s.id)}</span></div>`,
+    s.is_subagent && s.parent_session_id
+      ? `<div class="meta"><span class="ml">parent</span><span class="mv" style="color:var(--blue)">${esc(shortId(s.parent_session_id))}</span></div>` : '',
+  ].filter(Boolean).join('');
+
+  const permBox = s.permission_request ? buildPermBox(s.permission_request, canAct) : '';
+
+  const logRows = (s.events || []).map(e => {
+    const extra = [
+      e.tool || '',
+      (e.extra && e.extra.notification_type) ? e.extra.notification_type : '',
+      (e.extra && e.extra.message)            ? e.extra.message           : '',
+    ].filter(Boolean).join(' · ');
+    return `<div class="log-row">
+      <span class="lt">${esc(fmtTime(e.time))}</span>
+      <span class="lev ev-${esc(e.event || 'unknown')}">${esc(e.event || '?')}</span>
+      ${extra ? `<span class="lx">${esc(extra)}</span>` : ''}
+    </div>`;
+  }).join('') || `<div class="log-row" style="color:var(--muted)">No events recorded yet.</div>`;
+
+  return `<div class="panel">
+    <div class="panel-meta">${meta}</div>
+    ${permBox}
+    <div class="log-head">Event log</div>
+    <div class="log">${logRows}</div>
+  </div>`;
+}
+
+function buildPermBox(pr, canAct) {
+  const inputStr = typeof pr.tool_input === 'object'
+    ? JSON.stringify(pr.tool_input, null, 2)
+    : String(pr.tool_input ?? '');
+  const dis = canAct ? '' : ' disabled';
+  return `<div class="perm-box">
+    <div class="perm-head">⚠ Permission Request</div>
+    <div class="perm-body">
+      <div class="perm-tool">Tool: <b>${esc(pr.tool_name)}</b></div>
+      <div class="perm-code">${esc(inputStr)}</div>
+      <div class="perm-actions">
+        <button class="btn-approve"${dis}>Approve</button>
+        <button class="btn-deny"${dis}>Deny</button>
+      </div>
+      <div class="perm-result"></div>
+    </div>
+  </div>`;
+}
+
+// ── Permission relay ──────────────────────────────────────────────────────
+
+async function relay(sid, decision, ba, bd) {
+  if (ba) ba.disabled = true;
+  if (bd) bd.disabled = true;
+
+  const resultEl = document.querySelector('.perm-result');
+  if (resultEl) {
+    resultEl.className = 'perm-result sending';
+    resultEl.textContent = 'Sending…';
+  }
+
+  let data;
+  try {
+    const r = await fetch(`/sessions/${encodeURIComponent(sid)}/${decision}`, { method: 'POST' });
+    data = await r.json();
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  } catch (err) {
+    console.error('relay failed:', err);
+    if (resultEl) {
+      resultEl.className = 'perm-result error';
+      resultEl.textContent = `Error: ${err.message}`;
+    }
+    if (ba) ba.disabled = false;
+    if (bd) bd.disabled = false;
+    return;
+  }
+
+  if (!data.ok) {
+    if (resultEl) {
+      resultEl.className = 'perm-result timeout';
+      resultEl.textContent = '⚠ Permission already resolved (hook timed out)';
+    }
+    if (ba) ba.disabled = false;
+    if (bd) bd.disabled = false;
+    return;
+  }
+
+  if (resultEl) {
+    if (decision === 'approve') {
+      resultEl.className = 'perm-result approved';
+      resultEl.textContent = '✓ Approved — Claude will proceed';
+    } else {
+      resultEl.className = 'perm-result denied';
+      resultEl.textContent = '✗ Denied';
+    }
+  }
+}
+
+// ── Title & notifications ─────────────────────────────────────────────────
+
+function syncTitle() {
+  const n = sessions.filter(s => s.status === 'waiting_permission').length;
+  document.title = n > 0 ? `(${n}) ClaudeMonitor` : 'ClaudeMonitor';
+}
+
+let _lastNotified = new Set();
+
+function notifyPermissions(incoming) {
+  if (!('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+
+  const nowWaiting = new Set(
+    incoming.filter(s => s.status === 'waiting_permission').map(s => s.id)
+  );
+
+  for (const s of incoming) {
+    if (s.status !== 'waiting_permission') continue;
+    if (_lastNotified.has(s.id)) continue;
+    const { base } = splitCwd(s.cwd);
+    const tool = (s.permission_request && s.permission_request.tool_name) || 'tool';
+    new Notification('⚠ Permission Request', {
+      body: `${base}  ·  ${tool}`,
+      tag:  s.id,
+      requireInteraction: true,
+    });
+    _lastNotified.add(s.id);
+  }
+
+  for (const id of _lastNotified) {
+    if (!nowWaiting.has(id)) _lastNotified.delete(id);
+  }
+}
+
+(function requestNotifPermission() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') Notification.requestPermission();
+})();
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────
+
+function switchSessionTab(dir) {
+  if (!selectedCwd) return;
+  const sorted = sortedTabSessions(selectedCwd);
+  if (!sorted.length) return;
+  const idx  = sorted.findIndex(s => s.id === selectedSid);
+  const next = ((idx === -1 ? 0 : idx) + dir + sorted.length) % sorted.length;
+  selectedSid = sorted[next].id;
+  render();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+  switch (e.key) {
+    case 'a': case 'A': {
+      if (!selectedSid) break;
+      const sess = sessions.find(s => s.id === selectedSid);
+      if (sess && sess.status === 'waiting_permission') {
+        e.preventDefault();
+        const ba = document.querySelector('.btn-approve');
+        const bd = document.querySelector('.btn-deny');
+        if (ba && !ba.disabled) relay(sess.id, 'approve', ba, bd);
+      }
+      break;
+    }
+    case 'd': case 'D': {
+      if (!selectedSid) break;
+      const sess = sessions.find(s => s.id === selectedSid);
+      if (sess && sess.status === 'waiting_permission') {
+        e.preventDefault();
+        const ba = document.querySelector('.btn-approve');
+        const bd = document.querySelector('.btn-deny');
+        if (bd && !bd.disabled) relay(sess.id, 'deny', ba, bd);
+      }
+      break;
+    }
+    case 'ArrowRight': e.preventDefault(); switchSessionTab(1);  break;
+    case 'ArrowLeft':  e.preventDefault(); switchSessionTab(-1); break;
+  }
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+
+connect();
+</script>
+</body>
+</html>

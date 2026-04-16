@@ -1,0 +1,26 @@
+# ── Personal / dev-only files (not needed by users) ──
+dev/
+
+# Live .app launcher — contains user's absolute Python path.
+# The .template version (same directory) IS committed as the blueprint.
+ClaudeMonitor.app/Contents/MacOS/ClaudeMonitor
+
+# Claude Code per-user settings
+.claude/
+
+# macOS
+.DS_Store
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Editable install metadata
+*.dist-info/
+
+# Runtime state / logs
+/tmp/claudemonitor.log

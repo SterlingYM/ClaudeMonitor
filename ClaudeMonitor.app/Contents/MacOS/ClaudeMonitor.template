@@ -1,0 +1,20 @@
+#!/bin/bash
+# ─── ClaudeMonitor launcher (template) ────────────────────────────────────
+# Copy this file to `ClaudeMonitor` (same directory, no .template extension)
+# and set PYTHON below to the absolute path of a python3 interpreter that has
+# pywebview installed — i.e. the one you ran `pip install -e .` against.
+# Finder launches .app bundles with a minimal PATH, so a plain `python3`
+# will not reliably resolve to the right interpreter.
+#
+# See install.md Step 4 for the full procedure.
+# ─────────────────────────────────────────────────────────────────────────
+
+PYTHON="__SET_ME_TO_ABSOLUTE_PYTHON_PATH__"
+
+# Auto-detect the project directory from this script's own location.
+# Layout assumed:  <project>/ClaudeMonitor.app/Contents/MacOS/ClaudeMonitor
+SELF_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+PROJECT_DIR="$(cd "$SELF_DIR/../../.." && pwd -P)"
+
+cd "$PROJECT_DIR"
+exec "$PYTHON" launcher.py >> /tmp/claudemonitor.log 2>&1
