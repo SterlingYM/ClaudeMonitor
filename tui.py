@@ -298,6 +298,11 @@ class ClaudeMonitorTUI(App):
     # ── state ──
 
     def _apply_state(self, incoming: list[dict]) -> None:
+        # Un-dismiss sessions that became active again
+        for s in incoming:
+            if s["id"] in self._dismissed and s["status"] not in ("dead", "completed"):
+                self._dismissed.discard(s["id"])
+
         self._sessions = [s for s in incoming if s["id"] not in self._dismissed]
         groups = group_by_cwd(self._sessions)
 

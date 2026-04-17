@@ -556,6 +556,13 @@ function applyState(incoming) {
     if (!done) delete completedAt[s.id];
   }
 
+  // Un-dismiss sessions that became active again
+  for (const s of incoming) {
+    if (_dismissed.has(s.id) && !['dead', 'completed'].includes(s.status)) {
+      _dismissed.delete(s.id);
+    }
+  }
+
   sessions = incoming.filter(s => {
     if (_dismissed.has(s.id)) return false;
     const t = completedAt[s.id];
