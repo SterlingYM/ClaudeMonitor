@@ -11,7 +11,7 @@ ClaudeMonitor is a local daemon + native macOS window that monitors all running 
 
 ## What this install will do
 
-1. Install two Python packages (`pywebview`, `pillow`).
+1. Install the Python package and its dependency (`pywebview`).
 2. Merge seven hook entries into `~/.claude/settings.json` so every future Claude Code session sends events to `http://127.0.0.1:7891`.
 3. Generate `icon.icns` for the macOS app bundle.
 4. Rewrite `ClaudeMonitor.app/Contents/MacOS/ClaudeMonitor` so it uses the correct absolute paths for this machine.
@@ -51,12 +51,13 @@ From the project root (the directory containing `pyproject.toml`), run an editab
 python3 -m pip install -e .
 ```
 
-This pulls in `pywebview` and `pillow` from `pyproject.toml`. Editable mode keeps the code in place — no wheels, no copying.
+This pulls in `pywebview` from `pyproject.toml` and registers the `claudemonitor` command. Editable mode keeps the code in place — no wheels, no copying.
 
 Verify:
 
 ```bash
-python3 -c "import webview, PIL; print('deps OK')"
+python3 -c "import webview; print('deps OK')"
+claudemonitor --help 2>/dev/null; echo "command registered: $(which claudemonitor)"
 ```
 
 If you get `ModuleNotFoundError`, the user may have multiple Python installs — stop and ask them which one they want to use, then rerun `pip install -e .` with that specific interpreter's `pip`.
@@ -97,7 +98,8 @@ Warn the user: these hooks are global — every Claude Code session on this mach
 
 ---
 
-## Step 3 — Verify the bundled icon
+## Step 3 — Verify the bundled icon (macOS only)
+
 
 The icon ships pre-built inside the `.app`. Confirm it's there:
 
@@ -109,7 +111,9 @@ If the file is missing, something is wrong with the clone — re-clone the repo.
 
 ---
 
-## Step 4 — Instantiate the .app launcher from the template
+## Step 4 (macOS only) — Instantiate the .app launcher from the template
+
+> **Skip this step on Linux.** Use `claudemonitor` or `python3 server.py` instead.
 
 The repo ships a template at `ClaudeMonitor.app/Contents/MacOS/ClaudeMonitor.template`. The live launcher (`ClaudeMonitor` without the `.template` suffix) is deliberately **not** committed — it holds an absolute path to the user's Python interpreter and must be created locally.
 
@@ -154,13 +158,23 @@ Expected: an empty JSON array `[]` followed by a newline. If you see `Address al
 
 ---
 
-## Step 6 — Launch the app
+## Step 6 — Launch
+
+Any of these will start the server and open the dashboard:
 
 ```bash
-open ClaudeMonitor.app
+claudemonitor                    # CLI command (installed by pip in Step 1)
+./run.sh                         # shell script wrapper
+open ClaudeMonitor.app           # macOS app bundle (requires Step 4)
 ```
 
-A native window should appear showing the ClaudeMonitor dashboard. If the window fails to appear or closes immediately, read the log:
+Or run the server only (any OS) and open `http://localhost:7891` in a browser:
+
+```bash
+python3 server.py
+```
+
+If the native window fails to appear or closes immediately, read the log:
 
 ```bash
 cat /tmp/claudemonitor.log
@@ -211,9 +225,9 @@ If the tab never appears, the hooks block from Step 2 is not being read — doub
    ```bash
    rm -f ~/.claude/monitor-state.json
    ```
-5. Optionally uninstall the Python packages:
+5. Optionally uninstall the Python package:
    ```bash
-   python3 -m pip uninstall -y pywebview pillow
+   python3 -m pip uninstall -y claudemonitor pywebview
    ```
 
 The project directory itself can now be deleted — nothing else on the machine references it.

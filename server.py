@@ -122,6 +122,8 @@ def _upsert_session(session_id: str, **kwargs) -> dict:
         for k, v in kwargs.items():
             if k == "events":
                 continue  # events are managed via _append_event
+            if k == "cwd" and sess.get("cwd"):
+                continue  # pin cwd to the SessionStart value
             sess[k] = v
         sess["last_event_time"] = _now_iso()
     _broadcast({"type": "state", "sessions": _snapshot()})
@@ -269,9 +271,16 @@ def _process_event(event: dict) -> dict | None:
     # ── SubagentStart ────────────────────────────────────────────────────────
     elif hook == "SubagentStart":
         parent_id = event.get("parent_session_id")
-        _upsert_session(sid, cwd=cwd or _get_cwd(parent_id or ""),
-                        status="running", last_event=hook,
-                        is_subagent=True, parent_session_id=parent_id)
+        # Don't overwrite an existing main session as a subagent
+        with _sessions_lock:
+            existing = _sessions.get(sid)
+        if existing and not existing.get("is_subagent"):
+            # Session already exists as a main session — just update status
+            _upsert_session(sid, status="running", last_event=hook)
+        else:
+            _upsert_session(sid, cwd=cwd or _get_cwd(parent_id or ""),
+                            status="running", last_event=hook,
+                            is_subagent=True, parent_session_id=parent_id)
         if parent_id:
             with _sessions_lock:
                 if parent_id in _sessions:
@@ -281,7 +290,7 @@ def _process_event(event: dict) -> dict | None:
 
     # ── SubagentStop ─────────────────────────────────────────────────────────
     elif hook == "SubagentStop":
-        _upsert_session(sid, status="completed", last_event=hook)
+        _upsert_session(sid, status="idle", last_event=hook)
 
     # ── PreToolUse ───────────────────────────────────────────────────────────
     elif hook == "PreToolUse":
@@ -427,11 +436,27 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 sid      = parts[2]
                 decision = "allow" if parts[3] == "approve" else "deny"
                 self._relay_permission(sid, decision)
+            elif len(parts) == 4 and parts[1] == "sessions" and parts[3] == "dismiss":
+                self._dismiss_session(parts[2])
             else:
                 self._not_found()
 
         else:
             self._not_found()
+
+    def _dismiss_session(self, session_id: str) -> None:
+        with _sessions_lock:
+            if session_id in _sessions:
+                _sessions[session_id]["status"] = "dead"
+                _sessions[session_id]["permission_request"] = None
+        # Wake any pending permission relay so its thread doesn't leak
+        with _perm_lock:
+            slot = _pending_perms.get(session_id)
+        if slot and not slot["event"].is_set():
+            slot["decision"] = "external"
+            slot["event"].set()
+        _broadcast({"type": "state", "sessions": _snapshot()})
+        self._send_json(json.dumps({"ok": True}).encode())
 
     def _relay_permission(self, session_id: str, decision: str) -> None:
         with _perm_lock:
@@ -454,6 +479,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self._send_json(json.dumps(_snapshot()).encode())
         elif self.path in ("/", "/index.html"):
             self._serve_index()
+        elif self.path.endswith(".png") and "/" not in self.path[1:]:
+            self._serve_static(self.path[1:], "image/png")
         else:
             self._not_found()
 
@@ -520,6 +547,20 @@ class MonitorHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+    def _serve_static(self, filename: str, content_type: str):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self._not_found()
 
     # ── Shared response helpers ───────────────────────────────────────────────
 

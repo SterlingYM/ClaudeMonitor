@@ -10,7 +10,11 @@ readme = "install.md"
 requires-python = ">=3.9"
 dependencies = [
     "pywebview>=5.0",
+    "textual>=0.60",
 ]
 
+[project.scripts]
+claudemonitor = "launcher:main"
+
 [tool.setuptools]
-py-modules = ["server", "launcher"]
+py-modules = ["server", "launcher", "tui"]

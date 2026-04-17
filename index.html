@@ -43,14 +43,24 @@ body {
 .header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 10px 20px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   z-index: 10;
 }
-.header-logo { color: var(--accent); font-weight: 700; font-size: 15px; letter-spacing: .03em; }
+.header-icon {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+}
+.header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.header-name { color: var(--text); font-weight: 700; font-size: 15px; letter-spacing: .03em; }
+.header-version { color: var(--muted); font-size: 10px; line-height: 1; }
 .spacer { flex: 1; }
 .conn {
   display: flex;
@@ -68,51 +78,104 @@ body {
 .conn-dot.ok  { background: var(--green); }
 .conn-dot.err { background: var(--red); }
 
-/* ── Project tabs ────────────────────────────────────────────────── */
-.project-tabs {
+/* ── Layout: sidebar + main ──────────────────────────────────────── */
+.app-layout {
   display: flex;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 0 16px;
-  overflow-x: auto;
-  flex-shrink: 0;
+  flex: 1;
+  min-height: 0;
 }
-.project-tabs::-webkit-scrollbar { height: 3px; }
-.project-tabs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-.ptab {
+/* ── Left sidebar: project list ──────────────────────────────────── */
+.sidebar {
+  width: 260px;
+  min-width: 200px;
+  max-width: 340px;
+  background: var(--surface);
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 9px 16px;
+  flex-shrink: 0;
+  position: relative;
+}
+.sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  z-index: 0;
+}
+.sidebar-label {
+  padding: 8px 14px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
   color: var(--muted);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  white-space: nowrap;
-  transition: color .12s, border-color .12s, background .12s;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-.ptab:hover          { color: var(--text); background: rgba(255,255,255,.03); }
-.ptab.active         { color: var(--text); border-bottom-color: var(--accent); }
-.ptab.p-alarm        { color: var(--orange); }
-.ptab.active.p-alarm { border-bottom-color: var(--orange); }
-@keyframes ptab-pulse {
-  0%,100% { background: transparent; }
+.project-list {
+  flex: 1;
+  overflow-y: auto;
+}
+.pitem {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  border-right: 3px solid transparent;
+  transition: background .1s, border-color .1s;
+  position: relative;
+}
+.pitem:hover           { background: var(--surface2); }
+.pitem.active          {
+  background: var(--bg);
+  border-right: 3px solid var(--bg);
+  margin-right: -1px;
+  z-index: 1;
+  position: relative;
+}
+.pitem.p-alarm         { border-left: 3px solid var(--orange); }
+.pitem.active.p-alarm  { border-left: 3px solid var(--orange); }
+@keyframes pitem-pulse {
+  0%,100% { background: var(--surface); }
   50%      { background: rgba(251,146,60,.06); }
 }
-.ptab.p-alarm { animation: ptab-pulse 1.6s ease-in-out infinite; }
-
-.ptab { user-select: none; }
-.ptab.is-dragging            { opacity: .35; }
-.ptab.drag-left              { box-shadow: -2px 0 0 var(--accent); }
-.ptab.drag-right             { box-shadow:  2px 0 0 var(--accent); }
-.ptab-name { font-size: 13px; font-weight: 600; letter-spacing: .01em; }
-.ptab-info { display: flex; align-items: center; gap: 5px; font-size: 11px; }
-.ptab-count { color: var(--muted); }
-.ptab-sep   { color: var(--border); }
-.ptab-time  { color: var(--muted); }
-.ptab-status { font-weight: 500; }
+.pitem.p-alarm { animation: pitem-pulse 1.6s ease-in-out infinite; }
+.pitem-name {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 18px;
+}
+.pitem-info {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+}
+.pitem-count { color: var(--muted); }
+.pitem-sep   { color: var(--border2); }
+.pitem-time  { color: var(--muted); }
+.pitem-status { font-weight: 500; }
+.pitem-x {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .12s, color .12s;
+}
+.pitem:hover .pitem-x  { opacity: .6; }
+.pitem-x:hover         { opacity: 1 !important; color: var(--red); }
+.pitem.is-dragging     { opacity: .35; }
+.pitem.drag-above      { box-shadow: 0 -2px 0 var(--accent); }
+.pitem.drag-below      { box-shadow: 0  2px 0 var(--accent); }
 
 .ps-running  { color: var(--blue); }
 .ps-waiting  { color: var(--orange); }
@@ -120,33 +183,32 @@ body {
 .ps-starting { color: var(--muted); }
 .ps-ended    { color: var(--dimmer); }
 
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
-
-/* ── Main ────────────────────────────────────────────────────────── */
-.main {
-  padding: 22px 20px;
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
+/* ── Right panel ─────────────────────────────────────────────────── */
+.main-panel {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
-/* ── Empty state ─────────────────────────────────────────────────── */
-.empty {
-  text-align: center;
-  padding: 100px 20px;
+/* ── Session tabs ────────────────────────────────────────────────── */
+.session-label {
+  padding: 8px 18px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
   color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
-.empty-icon { font-size: 36px; opacity: .4; margin-bottom: 12px; }
-.empty p    { font-size: 13px; margin-top: 6px; color: var(--dimmer); }
-
-/* ── Session tabs (inner) ────────────────────────────────────────── */
 .tabs {
   display: flex;
   gap: 3px;
+  padding: 0;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 18px;
   flex-wrap: wrap;
+  flex-shrink: 0;
+  margin: 18px 18px 0 18px;
 }
 .tab {
   display: flex;
@@ -165,9 +227,20 @@ body {
   white-space: nowrap;
 }
 .tab:hover              { background: var(--surface2); color: var(--text); }
-.tab.active             { background: var(--surface);  border-color: var(--border); color: var(--text); }
+.tab.active             { background: var(--surface);  border-color: var(--border); border-bottom-color: var(--surface); color: var(--text); }
 .tab.t-waiting          { color: var(--orange); }
 .tab.active.t-waiting   { border-color: rgba(251,146,60,.5); }
+.tab-x {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .12s, color .12s;
+}
+.tab:hover .tab-x       { opacity: .6; }
+.tab-x:hover            { opacity: 1 !important; color: var(--red); }
 .sub-tag {
   font-size: 10px;
   padding: 1px 4px;
@@ -177,10 +250,16 @@ body {
 }
 
 /* ── Session panel ───────────────────────────────────────────────── */
+.panel-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 18px 18px 18px;
+}
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
   overflow: hidden;
 }
 .panel-meta {
@@ -222,6 +301,7 @@ body {
 .s-completed .sdot    { background: var(--muted); }
 .s-dead               { background: rgba(248,113,113,.08); color: var(--red); }
 .s-dead .sdot         { background: var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
 
 /* ── Permission box ──────────────────────────────────────────────── */
 .perm-box {
@@ -325,9 +405,11 @@ body {
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 10px 0 2px;
+  padding: 8px 18px;
   font-size: 11px;
   color: var(--muted);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .kbd-hint { display: flex; align-items: center; gap: 5px; }
 kbd {
@@ -344,6 +426,20 @@ kbd {
   color: var(--text);
 }
 
+/* ── Empty state ─────────────────────────────────────────────────── */
+.empty {
+  text-align: center;
+  padding: 100px 20px;
+  color: var(--muted);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.empty-icon { font-size: 36px; opacity: .4; margin-bottom: 12px; }
+.empty p    { font-size: 13px; margin-top: 6px; color: var(--dimmer); }
+
 /* ── Scrollbars ──────────────────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -354,7 +450,11 @@ kbd {
 <body>
 
 <div class="header">
-  <span class="header-logo">ClaudeMonitor</span>
+  <img class="header-icon" src="icon.png" alt="CM">
+  <div class="header-title">
+    <span class="header-name">Claude Monitor</span>
+    <span class="header-version">v0.1.0 · by YSM</span>
+  </div>
   <div class="spacer"></div>
   <div class="conn">
     <div class="conn-dot" id="cdot"></div>
@@ -362,24 +462,35 @@ kbd {
   </div>
 </div>
 
-<div class="project-tabs hidden" id="project-tabs"></div>
-
-<div class="main">
-  <div class="empty" id="empty">
-    <div class="empty-icon">◌</div>
-    <div style="color:var(--muted)">No active Claude sessions</div>
-    <p>Start a Claude Code session and it will appear here.</p>
+<div class="app-layout" id="app-layout">
+  <!-- Left sidebar: projects -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-label">Projects</div>
+    <div class="project-list" id="project-list"></div>
   </div>
 
-  <div id="project-view" class="hidden">
+  <!-- Right: sessions -->
+  <div class="main-panel" id="main-panel">
+    <div class="session-label">Sessions</div>
     <div class="tabs" id="tabs"></div>
-    <div id="panel"></div>
-    <div class="kbd-bar">
-      <span class="kbd-hint"><kbd>a</kbd> approve</span>
-      <span class="kbd-hint"><kbd>d</kbd> deny</span>
-      <span class="kbd-hint"><kbd>←</kbd><kbd>→</kbd> switch session</span>
+    <div class="panel-wrap">
+      <div id="panel"></div>
     </div>
   </div>
+</div>
+
+<div class="empty hidden" id="empty">
+  <div class="empty-icon">◌</div>
+  <div style="color:var(--muted)">No active Claude sessions</div>
+  <p>Start a Claude Code session and it will appear here.</p>
+</div>
+
+<div class="kbd-bar" id="kbd-bar">
+  <span class="kbd-hint"><kbd>a</kbd> approve</span>
+  <span class="kbd-hint"><kbd>d</kbd> deny</span>
+  <span class="kbd-hint"><kbd>x</kbd> dismiss</span>
+  <span class="kbd-hint"><kbd>↑</kbd><kbd>↓</kbd> project</span>
+  <span class="kbd-hint"><kbd>←</kbd><kbd>→</kbd> session</span>
 </div>
 
 <script>
@@ -392,8 +503,8 @@ let allIncoming = [];
 let completedAt = {};
 let selectedCwd = null;
 let selectedSid = null;
-let tabOrder    = [];   // user-controlled project tab order
-let _dragSrc    = null;
+let tabOrder    = [];
+let _dismissed  = new Set();
 
 const HIDE_AFTER = 5 * 60 * 1000;
 const STATUS_ICONS = {
@@ -446,6 +557,7 @@ function applyState(incoming) {
   }
 
   sessions = incoming.filter(s => {
+    if (_dismissed.has(s.id)) return false;
     const t = completedAt[s.id];
     return !t || now - t < HIDE_AFTER;
   });
@@ -490,7 +602,6 @@ function groupByCwd() {
   return map;
 }
 
-// Sorted cwds: alarm first, then most recently active
 function sortedCwds(map) {
   return [...map.keys()].sort((a, b) => {
     const aw = map.get(a).some(s => s.status === 'waiting_permission');
@@ -512,16 +623,14 @@ function timeAgo(iso) {
   return `${Math.floor(min / 60)}h ago`;
 }
 
-// Aggregate status for a group of top-level sessions (priority order)
-function projectStatus(topLevel) {
-  if (topLevel.some(s => s.status === 'waiting_permission')) return 'waiting';
-  if (topLevel.some(s => s.status === 'running'))             return 'running';
-  if (topLevel.some(s => s.status === 'starting'))            return 'starting';
-  if (topLevel.some(s => s.status === 'idle'))                return 'idle';
+function projectStatus(group) {
+  if (group.some(s => s.status === 'waiting_permission')) return 'waiting';
+  if (group.some(s => s.status === 'running'))             return 'running';
+  if (group.some(s => s.status === 'starting'))            return 'starting';
+  if (group.some(s => s.status === 'idle'))                return 'idle';
   return 'ended';
 }
 
-// Merge live cwds into tabOrder: preserve existing positions, append new ones at end
 function updateTabOrder(liveCwds) {
   const set = new Set(liveCwds);
   tabOrder = tabOrder.filter(c => set.has(c));
@@ -530,7 +639,6 @@ function updateTabOrder(liveCwds) {
   }
 }
 
-// Returns map of cwd → display label; duplicates get " 2", " 3", etc.
 function makeTabLabels(cwds) {
   const baseCounts = {};
   for (const cwd of cwds) {
@@ -539,7 +647,6 @@ function makeTabLabels(cwds) {
   }
   const baseSeq = {};
   const labels  = new Map();
-  // Stable ordering: sort so same base gets consistent numbering
   for (const cwd of [...cwds].sort()) {
     const { base } = splitCwd(cwd);
     if (baseCounts[base] > 1) {
@@ -556,44 +663,40 @@ function makeTabLabels(cwds) {
 
 function render() {
   const map  = groupByCwd();
-  const cwds = sortedCwds(map);
+  const emptyEl = document.getElementById('empty');
+  const layout  = document.getElementById('app-layout');
+  const kbdBar  = document.getElementById('kbd-bar');
 
-  const emptyEl   = document.getElementById('empty');
-  const ptabsEl   = document.getElementById('project-tabs');
-  const viewEl    = document.getElementById('project-view');
-
-  if (cwds.length === 0) {
+  if (sessions.length === 0) {
     emptyEl.classList.remove('hidden');
-    ptabsEl.classList.add('hidden');
-    viewEl.classList.add('hidden');
+    layout.classList.add('hidden');
+    kbdBar.classList.add('hidden');
     return;
   }
 
   emptyEl.classList.add('hidden');
-  ptabsEl.classList.remove('hidden');
-  viewEl.classList.remove('hidden');
+  layout.classList.remove('hidden');
+  kbdBar.classList.remove('hidden');
 
-  // Merge new cwds into tabOrder (new ones appended at end)
   updateTabOrder(sortedCwds(map));
 
-  // Auto-select project: keep current if still present, else pick best
   if (!selectedCwd || !map.has(selectedCwd)) {
     const alarm = tabOrder.find(c => map.get(c).some(s => s.status === 'waiting_permission'));
     selectedCwd = alarm || tabOrder[0];
     selectedSid = null;
   }
 
-  renderProjectTabs(tabOrder, map);
+  renderProjectList(tabOrder, map);
   renderSessionView(map);
 }
 
-// ── Project tabs ──────────────────────────────────────────────────────────
+// ── Project list (sidebar) ───────────────────────────────────────────────
 
-function renderProjectTabs(cwds, map) {
-  const labels  = makeTabLabels(cwds);
-  const ptabsEl = document.getElementById('project-tabs');
+function renderProjectList(cwds, map) {
+  const labels = makeTabLabels(cwds);
+  const listEl = document.getElementById('project-list');
 
-  ptabsEl.innerHTML = cwds.map(cwd => {
+  listEl.innerHTML = cwds.map(cwd => {
     const group    = map.get(cwd);
     const topLevel = group.filter(s => !s.is_subagent);
     const status   = projectStatus(group);
@@ -606,23 +709,26 @@ function renderProjectTabs(cwds, map) {
     const timeStr    = lastMs > 0 ? timeAgo(new Date(lastMs).toISOString()) : '—';
     const statusText = status === 'waiting' ? 'waiting' : status;
 
-    return `<div class="ptab${active ? ' active' : ''}${isAlarm ? ' p-alarm' : ''}"
-               draggable="true" data-cwd="${esc(cwd)}">
-      <span class="ptab-name">${esc(labels.get(cwd))}</span>
-      <span class="ptab-info">
-        <span class="ptab-count">${countStr}</span>
-        <span class="ptab-sep">·</span>
-        <span class="ptab-time">${timeStr}</span>
-        <span class="ptab-sep">·</span>
-        <span class="ptab-status ps-${status}">● ${statusText}</span>
-      </span>
+    return `<div class="pitem${active ? ' active' : ''}${isAlarm ? ' p-alarm' : ''}" draggable="true" data-cwd="${esc(cwd)}">
+      <div class="pitem-name">${esc(labels.get(cwd))}</div>
+      <div class="pitem-info">
+        <span class="pitem-count">${countStr}</span>
+        <span class="pitem-sep">·</span>
+        <span class="pitem-time">${timeStr}</span>
+        <span class="pitem-sep">·</span>
+        <span class="pitem-status ps-${status}">● ${statusText}</span>
+      </div>
+      <span class="pitem-x" data-cwd="${esc(cwd)}" title="Dismiss all sessions">×</span>
     </div>`;
   }).join('');
 
-  ptabsEl.querySelectorAll('.ptab').forEach(el => {
+  listEl.querySelectorAll('.pitem').forEach(el => {
     const cwd = el.dataset.cwd;
 
-    el.addEventListener('click', () => selectProject(cwd));
+    el.addEventListener('click', e => {
+      if (e.target.classList.contains('pitem-x')) return;
+      selectProject(cwd);
+    });
 
     el.addEventListener('dragstart', e => {
       _dragSrc = cwd;
@@ -633,8 +739,8 @@ function renderProjectTabs(cwds, map) {
     el.addEventListener('dragend', () => {
       _dragSrc = null;
       el.classList.remove('is-dragging');
-      ptabsEl.querySelectorAll('.ptab').forEach(t =>
-        t.classList.remove('drag-left', 'drag-right')
+      listEl.querySelectorAll('.pitem').forEach(t =>
+        t.classList.remove('drag-above', 'drag-below')
       );
     });
 
@@ -642,39 +748,45 @@ function renderProjectTabs(cwds, map) {
       if (!_dragSrc || _dragSrc === cwd) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      const mid = el.getBoundingClientRect().left + el.getBoundingClientRect().width / 2;
-      ptabsEl.querySelectorAll('.ptab').forEach(t =>
-        t.classList.remove('drag-left', 'drag-right')
+      const mid = el.getBoundingClientRect().top + el.getBoundingClientRect().height / 2;
+      listEl.querySelectorAll('.pitem').forEach(t =>
+        t.classList.remove('drag-above', 'drag-below')
       );
-      el.classList.add(e.clientX < mid ? 'drag-left' : 'drag-right');
+      el.classList.add(e.clientY < mid ? 'drag-above' : 'drag-below');
     });
 
     el.addEventListener('dragleave', () =>
-      el.classList.remove('drag-left', 'drag-right')
+      el.classList.remove('drag-above', 'drag-below')
     );
 
     el.addEventListener('drop', e => {
       e.preventDefault();
       if (!_dragSrc || _dragSrc === cwd) return;
-      const mid         = el.getBoundingClientRect().left + el.getBoundingClientRect().width / 2;
-      const insertBefore = e.clientX < mid;
+      const mid = el.getBoundingClientRect().top + el.getBoundingClientRect().height / 2;
+      const insertBefore = e.clientY < mid;
       const from = tabOrder.indexOf(_dragSrc);
       tabOrder.splice(from, 1);
       const to = tabOrder.indexOf(cwd);
       tabOrder.splice(insertBefore ? to : to + 1, 0, _dragSrc);
       _dragSrc = null;
-      renderProjectTabs(tabOrder, map);
+      render();
+    });
+  });
+  listEl.querySelectorAll('.pitem-x').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      dismissProject(el.dataset.cwd);
     });
   });
 }
 
 function selectProject(cwd) {
   selectedCwd = cwd;
-  selectedSid = null;   // reset inner tab; renderSessionView will pick best
+  selectedSid = null;
   render();
 }
 
-// ── Session view (inner tabs + panel) ────────────────────────────────────
+// ── Session view (tabs + panel) ──────────────────────────────────────────
 
 function sortedTabSessions(cwd) {
   return [...cwdSessions(cwd)].sort((a, b) => {
@@ -688,7 +800,6 @@ function sortedTabSessions(cwd) {
 function renderSessionView(map) {
   const group = cwdSessions(selectedCwd);
 
-  // Pick session tab: keep current if valid, else pick best
   if (!selectedSid || !group.find(s => s.id === selectedSid)) {
     const waiting = group.find(s => s.status === 'waiting_permission');
     selectedSid = (waiting || group[0] || {}).id || null;
@@ -696,21 +807,26 @@ function renderSessionView(map) {
 
   const sorted = sortedTabSessions(selectedCwd);
 
-  // Session tabs
   document.getElementById('tabs').innerHTML = sorted.map(s => {
     const active  = s.id === selectedSid;
     const waiting = s.status === 'waiting_permission';
     const cls = ['tab', active ? 'active' : '', waiting ? 't-waiting' : ''].filter(Boolean).join(' ');
     return `<div class="${cls}" data-sid="${esc(s.id)}">
       ${icon(s.status)} ${esc(shortId(s.id))}${s.is_subagent ? ' <span class="sub-tag">sub</span>' : ''}
+      <span class="tab-x" data-sid="${esc(s.id)}" title="Dismiss session">×</span>
     </div>`;
   }).join('');
 
   document.getElementById('tabs').querySelectorAll('.tab').forEach(el =>
-    el.addEventListener('click', () => { selectedSid = el.dataset.sid; renderSessionView(map); })
+    el.addEventListener('click', e => {
+      if (e.target.classList.contains('tab-x')) return;
+      selectedSid = el.dataset.sid; renderSessionView(map);
+    })
+  );
+  document.getElementById('tabs').querySelectorAll('.tab-x').forEach(el =>
+    el.addEventListener('click', e => { e.stopPropagation(); dismissSession(el.dataset.sid); })
   );
 
-  // Panel
   const sess    = group.find(s => s.id === selectedSid);
   const panelEl = document.getElementById('panel');
   if (!sess) { panelEl.innerHTML = ''; return; }
@@ -780,6 +896,23 @@ function buildPermBox(pr, canAct) {
       <div class="perm-result"></div>
     </div>
   </div>`;
+}
+
+// ── Dismiss ──────────────────────────────────────────────────────────────
+
+async function dismissSession(sid) {
+  _dismissed.add(sid);
+  applyState(allIncoming);
+  try {
+    await fetch(`/sessions/${encodeURIComponent(sid)}/dismiss`, { method: 'POST' });
+  } catch (err) {
+    console.error('dismiss failed:', err);
+  }
+}
+
+async function dismissProject(cwd) {
+  const group = cwdSessions(cwd);
+  await Promise.all(group.map(s => dismissSession(s.id)));
 }
 
 // ── Permission relay ──────────────────────────────────────────────────────
@@ -873,6 +1006,13 @@ function notifyPermissions(incoming) {
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────
 
+function switchProject(dir) {
+  if (!tabOrder.length) return;
+  const idx = tabOrder.indexOf(selectedCwd);
+  const next = ((idx === -1 ? 0 : idx) + dir + tabOrder.length) % tabOrder.length;
+  selectProject(tabOrder[next]);
+}
+
 function switchSessionTab(dir) {
   if (!selectedCwd) return;
   const sorted = sortedTabSessions(selectedCwd);
@@ -910,8 +1050,13 @@ document.addEventListener('keydown', e => {
       }
       break;
     }
-    case 'ArrowRight': e.preventDefault(); switchSessionTab(1);  break;
-    case 'ArrowLeft':  e.preventDefault(); switchSessionTab(-1); break;
+    case 'x': case 'X':
+      if (selectedSid) { e.preventDefault(); dismissSession(selectedSid); }
+      break;
+    case 'ArrowUp':    e.preventDefault(); switchProject(-1);     break;
+    case 'ArrowDown':  e.preventDefault(); switchProject(1);      break;
+    case 'ArrowRight': e.preventDefault(); switchSessionTab(1);   break;
+    case 'ArrowLeft':  e.preventDefault(); switchSessionTab(-1);  break;
   }
 });
 
