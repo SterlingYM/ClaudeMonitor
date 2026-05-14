@@ -76,6 +76,26 @@ def project_status(sessions: list[dict]) -> str:
     return "dead"
 
 
+def _fmt_tool_input(inp) -> str:
+    if not inp or not isinstance(inp, dict):
+        return str(inp or "")
+    parts = []
+    if inp.get("command"):     parts.append(inp["command"])
+    if inp.get("file_path"):   parts.append(inp["file_path"])
+    if inp.get("pattern"):     parts.append(inp["pattern"])
+    if inp.get("path") and not inp.get("file_path"): parts.append(inp["path"])
+    if inp.get("old_string"):  parts.append("old: " + inp["old_string"][:200])
+    if inp.get("new_string"):  parts.append("new: " + inp["new_string"][:200])
+    if inp.get("content"):     parts.append(inp["content"][:200])
+    if inp.get("description"): parts.append(inp["description"])
+    if parts:
+        return "\n".join(parts)
+    return "\n".join(
+        f"{k}: {v if isinstance(v, str) else json.dumps(v)}"[:200]
+        for k, v in inp.items()
+    )
+
+
 def group_by_cwd(sessions: list[dict]) -> dict[str, list[dict]]:
     groups: dict[str, list[dict]] = {}
     for s in sessions:
@@ -207,6 +227,7 @@ class ClaudeMonitorTUI(App):
 
     BINDINGS = [
         Binding("a", "approve", "Approve", show=True),
+        Binding("A", "approve_always", "Always Allow", show=True),
         Binding("d", "deny", "Deny", show=True),
         Binding("x", "dismiss", "Dismiss", show=True),
         Binding("left", "prev_session", "", show=True, priority=True),
@@ -234,6 +255,7 @@ class ClaudeMonitorTUI(App):
         self._dismissed: set[str] = set()
         self._sse: SSEClient | None = None
         self._session_orders: dict[str, list[str]] = {}  # cwd → ordered session IDs
+        self._prev_waiting_ids: set[str] = set()
 
     def compose(self) -> ComposeResult:
         yield Static("", id="logo")
@@ -323,6 +345,30 @@ class ClaudeMonitorTUI(App):
             if not self._selected_sid and group:
                 w = next((s for s in group if s["status"] == "waiting_permission"), None)
                 self._selected_sid = (w or group[0])["id"]
+
+        # Auto-switch to a waiting permission session.
+        #   1. A new request appeared and user isn't already handling one → switch.
+        #   2. The currently selected session was waiting and just got resolved,
+        #      and there are still other waiting sessions → switch to the next.
+        current_waiting = [s for s in self._sessions if s["status"] == "waiting_permission"]
+        current_waiting_ids = {s["id"] for s in current_waiting}
+        new_waiting = [s for s in current_waiting if s["id"] not in self._prev_waiting_ids]
+        sel_now_waiting = bool(self._selected_sid) and self._selected_sid in current_waiting_ids
+        sel_was_waiting = bool(self._selected_sid) and self._selected_sid in self._prev_waiting_ids
+
+        target = None
+        if new_waiting and not sel_now_waiting:
+            target = new_waiting[0]
+        elif sel_was_waiting and not sel_now_waiting and current_waiting:
+            target = current_waiting[0]
+
+        if target:
+            self._selected_cwd = target.get("cwd") or "?"
+            self._selected_sid = target["id"]
+            if self._selected_cwd not in self._project_order:
+                self._project_order.append(self._selected_cwd)
+
+        self._prev_waiting_ids = current_waiting_ids
 
         self._render()
 
@@ -447,13 +493,16 @@ class ClaudeMonitorTUI(App):
         if pr and st == "waiting_permission":
             tool_name = pr.get("tool_name", "?")
             inp = pr.get("tool_input", {})
-            inp_str = json.dumps(inp, indent=2) if isinstance(inp, dict) else str(inp)
+            inp_str = _fmt_tool_input(inp)
             if len(inp_str) > 500:
                 inp_str = inp_str[:500] + "\n…"
+            suggestions = pr.get("suggestions") or []
+            has_always = any(s.get("behavior") == "allow" for s in suggestions)
+            always_hint = "  [reverse] A [/] always allow" if has_always else ""
             perm_box.update(
                 f"[bold yellow]⚠ Permission Request[/]  Tool: [bold]{tool_name}[/]\n"
                 f"[dim]{inp_str}[/]\n"
-                f"[reverse] a [/] approve  [reverse] d [/] deny"
+                f"[reverse] a [/] approve{always_hint}  [reverse] d [/] deny"
             )
             perm_box.remove_class("hidden")
         else:
@@ -569,6 +618,20 @@ class ClaudeMonitorTUI(App):
     def action_approve(self) -> None:
         self._try_relay("approve")
 
+    def action_approve_always(self) -> None:
+        if not self._selected_sid:
+            return
+        sess = next((s for s in self._sessions if s["id"] == self._selected_sid), None)
+        if not sess or sess["status"] != "waiting_permission":
+            return
+        pr = sess.get("permission_request") or {}
+        suggestions = pr.get("suggestions") or []
+        allow_sugg = next((s for s in suggestions if s.get("behavior") == "allow"), None)
+        if allow_sugg:
+            self._do_relay(self._selected_sid, "approve", [allow_sugg])
+        else:
+            self._do_relay(self._selected_sid, "approve")
+
     def action_deny(self) -> None:
         self._try_relay("deny")
 
@@ -586,10 +649,16 @@ class ClaudeMonitorTUI(App):
             self._do_relay(self._selected_sid, decision)
 
     @work(thread=True)
-    def _do_relay(self, sid: str, decision: str) -> None:
+    def _do_relay(self, sid: str, decision: str, updated_perms=None) -> None:
         try:
+            body = b""
+            headers = {}
+            if updated_perms:
+                body = json.dumps({"updatedPermissions": updated_perms}).encode()
+                headers["Content-Type"] = "application/json"
             req = urllib.request.Request(
-                f"{self._server_url}/sessions/{sid}/{decision}", method="POST", data=b""
+                f"{self._server_url}/sessions/{sid}/{decision}",
+                method="POST", data=body, headers=headers,
             )
             urllib.request.urlopen(req, timeout=5)
         except Exception as e:

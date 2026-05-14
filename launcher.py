@@ -71,7 +71,23 @@ def main() -> None:
         tui_main(url=args.url)
     else:
         import webview
-        webview.create_window("ClaudeMonitor", args.url, width=820, height=700)
+
+        class _Api:
+            """Exposed to JS as window.pywebview.api."""
+            def __init__(self):
+                self._window = None
+
+            def toggle_on_top(self):
+                if self._window:
+                    self._window.on_top = not self._window.on_top
+                    return self._window.on_top
+                return False
+
+        api = _Api()
+        win = webview.create_window(
+            "ClaudeMonitor", args.url, width=820, height=700, js_api=api,
+        )
+        api._window = win
         webview.start()
 
 

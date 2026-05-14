@@ -322,10 +322,12 @@ def _process_event(event: dict) -> dict | None:
     # ── PermissionRequest ────────────────────────────────────────────────────
     elif hook == "PermissionRequest":
         tool = event.get("tool_name") or ""
+        suggestions = event.get("permission_suggestions") or []
         perm_details = {
             "tool_name":   tool,
             "tool_input":  event.get("tool_input") or {},
             "requested_at": ts,
+            "suggestions": suggestions,
         }
         log_entry["tool"]  = tool
         log_entry["extra"]["permission_request"] = perm_details
@@ -350,12 +352,17 @@ def _process_event(event: dict) -> dict | None:
             _pending_perms.pop(sid, None)
 
         if decision == "allow":
-            print(f"[perm] ALLOWED  {sid[:8]} → {tool}")
+            updated_perms = slot.get("updated_perms")
+            label = "ALLOW-ALWAYS" if updated_perms else "ALLOWED"
+            print(f"[perm] {label:11s} {sid[:8]} → {tool}")
             _upsert_session(sid, status="running", permission_request=None)
+            dec: dict = {"behavior": "allow"}
+            if updated_perms:
+                dec["updatedPermissions"] = updated_perms
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "PermissionRequest",
-                    "decision": {"behavior": "allow"},
+                    "decision": dec,
                 }
             }
         elif decision == "deny":
@@ -435,7 +442,15 @@ class MonitorHandler(BaseHTTPRequestHandler):
             if len(parts) == 4 and parts[1] == "sessions" and parts[3] in ("approve", "deny"):
                 sid      = parts[2]
                 decision = "allow" if parts[3] == "approve" else "deny"
-                self._relay_permission(sid, decision)
+                # Parse optional JSON body for updatedPermissions
+                updated_perms = None
+                if raw:
+                    try:
+                        body_json = json.loads(raw)
+                        updated_perms = body_json.get("updatedPermissions")
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+                self._relay_permission(sid, decision, updated_perms)
             elif len(parts) == 4 and parts[1] == "sessions" and parts[3] == "dismiss":
                 self._dismiss_session(parts[2])
             else:
@@ -458,11 +473,13 @@ class MonitorHandler(BaseHTTPRequestHandler):
         _broadcast({"type": "state", "sessions": _snapshot()})
         self._send_json(json.dumps({"ok": True}).encode())
 
-    def _relay_permission(self, session_id: str, decision: str) -> None:
+    def _relay_permission(self, session_id: str, decision: str, updated_perms=None) -> None:
         with _perm_lock:
             slot = _pending_perms.get(session_id)
         if slot:
             slot["decision"] = decision
+            if updated_perms:
+                slot["updated_perms"] = updated_perms
             slot["event"].set()
             self._send_json(json.dumps({"ok": True, "decision": decision}).encode())
         else:

@@ -62,6 +62,23 @@ body {
 .header-name { color: var(--text); font-weight: 700; font-size: 15px; letter-spacing: .03em; }
 .header-version { color: var(--muted); font-size: 10px; line-height: 1; }
 .spacer { flex: 1; }
+.pin-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  font: 12px var(--sans);
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.pin-btn:hover    { color: var(--text); border-color: var(--border2); }
+.pin-btn.active   { background: var(--accent); color: #1a1a2e; border-color: var(--accent); }
+.pin-icon         { font-size: 13px; }
+.pin-label        { font-weight: 500; }
 .conn {
   display: flex;
   align-items: center;
@@ -339,7 +356,7 @@ body {
   margin-bottom: 14px;
 }
 .perm-actions { display: flex; gap: 9px; }
-.btn-approve, .btn-deny {
+.btn-approve, .btn-always, .btn-deny {
   padding: 7px 20px;
   border-radius: 5px;
   border: none;
@@ -348,10 +365,12 @@ body {
   transition: opacity .1s, background .1s;
 }
 .btn-approve { background: var(--green); color: #052e16; }
+.btn-always  { background: var(--blue); color: #0c1a2e; }
 .btn-deny    { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
 .btn-approve:hover:not(:disabled) { opacity: .85; }
+.btn-always:hover:not(:disabled)  { opacity: .85; }
 .btn-deny:hover:not(:disabled)    { background: var(--border); }
-.btn-approve:disabled, .btn-deny:disabled { opacity: .35; cursor: not-allowed; }
+.btn-approve:disabled, .btn-always:disabled, .btn-deny:disabled { opacity: .35; cursor: not-allowed; }
 .perm-result {
   margin-top: 12px;
   font-size: 13px;
@@ -456,6 +475,10 @@ kbd {
     <span class="header-version">v0.1.0 · by YSM</span>
   </div>
   <div class="spacer"></div>
+  <button class="pin-btn hidden" id="pin-btn" title="Keep window on top">
+    <span class="pin-icon">&#x1F4CC;</span>
+    <span class="pin-label">Pin</span>
+  </button>
   <div class="conn">
     <div class="conn-dot" id="cdot"></div>
     <span id="cstatus">connecting</span>
@@ -505,6 +528,7 @@ let selectedCwd = null;
 let selectedSid = null;
 let tabOrder    = [];
 let _dismissed  = new Set();
+let _prevWaitingIds = new Set();   // for auto-switch detection
 
 const HIDE_AFTER = 5 * 60 * 1000;
 const STATUS_ICONS = {
@@ -568,6 +592,32 @@ function applyState(incoming) {
     const t = completedAt[s.id];
     return !t || now - t < HIDE_AFTER;
   });
+
+  // Auto-switch to a waiting permission session.
+  // Two triggers:
+  //   1. A new session entered waiting_permission state — switch unless the user
+  //      is already handling another waiting one.
+  //   2. The currently-selected session WAS waiting and just got resolved, and
+  //      there are still other waiting sessions — switch to the next.
+  const currentWaiting   = sessions.filter(s => s.status === 'waiting_permission');
+  const currentWaitingIds = new Set(currentWaiting.map(s => s.id));
+  const newWaiting       = currentWaiting.filter(s => !_prevWaitingIds.has(s.id));
+  const selectedNowWaiting = selectedSid && currentWaitingIds.has(selectedSid);
+  const selectedWasWaiting = selectedSid && _prevWaitingIds.has(selectedSid);
+
+  let target = null;
+  if (newWaiting.length > 0 && !selectedNowWaiting) {
+    target = newWaiting[0];
+  } else if (selectedWasWaiting && !selectedNowWaiting && currentWaiting.length > 0) {
+    target = currentWaiting[0];
+  }
+  if (target) {
+    selectedCwd = target.cwd || '?';
+    selectedSid = target.id;
+    // ensure the target's project is in tabOrder so render() doesn't auto-pick another
+    if (!tabOrder.includes(selectedCwd)) tabOrder.push(selectedCwd);
+  }
+  _prevWaitingIds = currentWaitingIds;
 
   notifyPermissions(incoming);
   render();
@@ -841,9 +891,17 @@ function renderSessionView(map) {
   panelEl.innerHTML = buildPanel(sess);
 
   const ba = panelEl.querySelector('.btn-approve');
+  const bw = panelEl.querySelector('.btn-always');
   const bd = panelEl.querySelector('.btn-deny');
-  if (ba) ba.addEventListener('click', () => relay(sess.id, 'approve', ba, bd));
-  if (bd) bd.addEventListener('click', () => relay(sess.id, 'deny',    ba, bd));
+  const allBtns = [ba, bw, bd].filter(Boolean);
+  if (ba) ba.addEventListener('click', () => relay(sess.id, 'approve', allBtns));
+  if (bw) bw.addEventListener('click', () => {
+    try {
+      const sugg = JSON.parse(bw.dataset.suggestion);
+      relay(sess.id, 'approve', allBtns, [sugg]);
+    } catch { relay(sess.id, 'approve', allBtns); }
+  });
+  if (bd) bd.addEventListener('click', () => relay(sess.id, 'deny', allBtns));
 
   const log = panelEl.querySelector('.log');
   if (log) log.scrollTop = log.scrollHeight;
@@ -886,11 +944,34 @@ function buildPanel(s) {
   </div>`;
 }
 
+function fmtToolInput(input) {
+  if (!input || typeof input !== 'object') return String(input ?? '');
+  const parts = [];
+  // Show the most meaningful fields first, skip noise
+  if (input.command)     parts.push(input.command);
+  if (input.file_path)   parts.push(input.file_path);
+  if (input.pattern)     parts.push(input.pattern);
+  if (input.path && !input.file_path) parts.push(input.path);
+  if (input.old_string)  parts.push('old: ' + input.old_string.slice(0, 200));
+  if (input.new_string)  parts.push('new: ' + input.new_string.slice(0, 200));
+  if (input.content)     parts.push(input.content.slice(0, 200));
+  if (input.description) parts.push(input.description);
+  if (parts.length) return parts.join('\n');
+  // Fallback: key: value pairs
+  return Object.entries(input).map(([k, v]) => {
+    const s = typeof v === 'string' ? v : JSON.stringify(v);
+    return `${k}: ${s.length > 200 ? s.slice(0, 200) + '…' : s}`;
+  }).join('\n');
+}
+
 function buildPermBox(pr, canAct) {
-  const inputStr = typeof pr.tool_input === 'object'
-    ? JSON.stringify(pr.tool_input, null, 2)
-    : String(pr.tool_input ?? '');
+  const inputStr = fmtToolInput(pr.tool_input);
   const dis = canAct ? '' : ' disabled';
+  const suggestions = pr.suggestions || [];
+  const allowSugg = suggestions.find(s => s.behavior === 'allow');
+  const alwaysBtn = allowSugg
+    ? `<button class="btn-always"${dis} data-suggestion='${esc(JSON.stringify(allowSugg))}'>Always Allow</button>`
+    : '';
   return `<div class="perm-box">
     <div class="perm-head">⚠ Permission Request</div>
     <div class="perm-body">
@@ -898,6 +979,7 @@ function buildPermBox(pr, canAct) {
       <div class="perm-code">${esc(inputStr)}</div>
       <div class="perm-actions">
         <button class="btn-approve"${dis}>Approve</button>
+        ${alwaysBtn}
         <button class="btn-deny"${dis}>Deny</button>
       </div>
       <div class="perm-result"></div>
@@ -924,9 +1006,8 @@ async function dismissProject(cwd) {
 
 // ── Permission relay ──────────────────────────────────────────────────────
 
-async function relay(sid, decision, ba, bd) {
-  if (ba) ba.disabled = true;
-  if (bd) bd.disabled = true;
+async function relay(sid, decision, btns, updatedPermissions) {
+  for (const b of (btns || [])) if (b) b.disabled = true;
 
   const resultEl = document.querySelector('.perm-result');
   if (resultEl) {
@@ -934,9 +1015,15 @@ async function relay(sid, decision, ba, bd) {
     resultEl.textContent = 'Sending…';
   }
 
+  const fetchOpts = { method: 'POST' };
+  if (updatedPermissions) {
+    fetchOpts.headers = { 'Content-Type': 'application/json' };
+    fetchOpts.body = JSON.stringify({ updatedPermissions });
+  }
+
   let data;
   try {
-    const r = await fetch(`/sessions/${encodeURIComponent(sid)}/${decision}`, { method: 'POST' });
+    const r = await fetch(`/sessions/${encodeURIComponent(sid)}/${decision}`, fetchOpts);
     data = await r.json();
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
   } catch (err) {
@@ -945,8 +1032,7 @@ async function relay(sid, decision, ba, bd) {
       resultEl.className = 'perm-result error';
       resultEl.textContent = `Error: ${err.message}`;
     }
-    if (ba) ba.disabled = false;
-    if (bd) bd.disabled = false;
+    for (const b of (btns || [])) if (b) b.disabled = false;
     return;
   }
 
@@ -955,8 +1041,7 @@ async function relay(sid, decision, ba, bd) {
       resultEl.className = 'perm-result timeout';
       resultEl.textContent = '⚠ Permission already resolved (hook timed out)';
     }
-    if (ba) ba.disabled = false;
-    if (bd) bd.disabled = false;
+    for (const b of (btns || [])) if (b) b.disabled = false;
     return;
   }
 
@@ -1040,9 +1125,8 @@ document.addEventListener('keydown', e => {
       const sess = sessions.find(s => s.id === selectedSid);
       if (sess && sess.status === 'waiting_permission') {
         e.preventDefault();
-        const ba = document.querySelector('.btn-approve');
-        const bd = document.querySelector('.btn-deny');
-        if (ba && !ba.disabled) relay(sess.id, 'approve', ba, bd);
+        const btns = ['.btn-approve','.btn-always','.btn-deny'].map(c => document.querySelector(c)).filter(Boolean);
+        if (btns[0] && !btns[0].disabled) relay(sess.id, 'approve', btns);
       }
       break;
     }
@@ -1051,9 +1135,9 @@ document.addEventListener('keydown', e => {
       const sess = sessions.find(s => s.id === selectedSid);
       if (sess && sess.status === 'waiting_permission') {
         e.preventDefault();
-        const ba = document.querySelector('.btn-approve');
+        const btns = ['.btn-approve','.btn-always','.btn-deny'].map(c => document.querySelector(c)).filter(Boolean);
         const bd = document.querySelector('.btn-deny');
-        if (bd && !bd.disabled) relay(sess.id, 'deny', ba, bd);
+        if (bd && !bd.disabled) relay(sess.id, 'deny', btns);
       }
       break;
     }
@@ -1068,6 +1152,20 @@ document.addEventListener('keydown', e => {
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────
+
+// ── Pin-on-top (pywebview only) ──────────────────────────────────────────
+
+window.addEventListener('pywebviewready', () => {
+  const btn = document.getElementById('pin-btn');
+  btn.classList.remove('hidden');
+  btn.addEventListener('click', async () => {
+    if (window.pywebview && window.pywebview.api) {
+      const isOnTop = await window.pywebview.api.toggle_on_top();
+      btn.classList.toggle('active', isOnTop);
+      btn.querySelector('.pin-label').textContent = isOnTop ? 'Pinned' : 'Pin';
+    }
+  });
+});
 
 connect();
 </script>
